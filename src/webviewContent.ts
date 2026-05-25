@@ -182,6 +182,8 @@ export function getWebviewHtml(webview: vscode.Webview, settings?: BootFrameSett
 
 		.bf-node {
 			position: relative;
+			min-width: 0;
+			overflow: hidden;
 			border: 1px solid var(--bf-border);
 			border-radius: 4px;
 			transition: border-color 120ms ease, box-shadow 120ms ease, background 120ms ease;
@@ -199,14 +201,17 @@ export function getWebviewHtml(webview: vscode.Webview, settings?: BootFrameSett
 
 		.bf-row {
 			display: grid;
-			grid-template-columns: repeat(12, minmax(18px, 1fr));
+			grid-template-columns: repeat(12, minmax(0, 1fr));
 			gap: 6px;
+			min-width: 0;
 			min-height: 70px;
 			padding: 8px;
+			overflow: hidden;
 			background: rgba(245, 158, 11, 0.08);
 		}
 
 		.bf-col {
+			min-width: 0;
 			min-height: 56px;
 			padding: 8px 10px;
 			background: rgba(34, 197, 94, 0.1);
@@ -226,8 +231,10 @@ export function getWebviewHtml(webview: vscode.Webview, settings?: BootFrameSett
 			display: flex;
 			align-items: center;
 			justify-content: space-between;
-			gap: 8px;
+			gap: 6px;
+			min-width: 0;
 			min-height: 22px;
+			overflow: hidden;
 			color: var(--vscode-foreground);
 			font-size: 12px;
 		}
@@ -235,11 +242,16 @@ export function getWebviewHtml(webview: vscode.Webview, settings?: BootFrameSett
 		.node-title {
 			display: flex;
 			align-items: center;
-			gap: 6px;
+			flex: 1 1 auto;
+			flex-wrap: wrap;
+			gap: 3px 6px;
 			min-width: 0;
+			overflow: hidden;
 		}
 
 		.node-title strong {
+			flex: 1 1 64px;
+			min-width: 0;
 			overflow: hidden;
 			text-overflow: ellipsis;
 			white-space: nowrap;
@@ -256,12 +268,18 @@ export function getWebviewHtml(webview: vscode.Webview, settings?: BootFrameSett
 			text-transform: uppercase;
 		}
 
-		.node-label span:last-child {
+		.node-meta {
+			flex: 0 1 auto;
+			min-width: 0;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
 			color: var(--bf-muted);
 			font-size: 11px;
 		}
 
 		.nested {
+			min-width: 0;
 			margin-top: 8px;
 		}
 
@@ -269,7 +287,9 @@ export function getWebviewHtml(webview: vscode.Webview, settings?: BootFrameSett
 			display: flex;
 			align-items: center;
 			justify-content: center;
+			min-width: 0;
 			min-height: 48px;
+			overflow: hidden;
 			border: 1px dashed var(--bf-border);
 			border-radius: 4px;
 			color: var(--bf-muted);
@@ -278,7 +298,11 @@ export function getWebviewHtml(webview: vscode.Webview, settings?: BootFrameSett
 
 		.empty-action {
 			width: 100%;
+			min-width: 0;
 			min-height: 48px;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
 			border-style: dashed;
 			color: var(--bf-muted);
 			background: transparent;
@@ -287,6 +311,46 @@ export function getWebviewHtml(webview: vscode.Webview, settings?: BootFrameSett
 		.empty-action:hover {
 			color: var(--vscode-foreground);
 			border-color: var(--bf-focus);
+		}
+
+		.bf-node[data-depth="2"] .bf-row,
+		.bf-node[data-depth="3"] .bf-row {
+			gap: 4px;
+			min-height: 58px;
+			padding: 6px;
+		}
+
+		.bf-node[data-depth="2"].bf-col,
+		.bf-node[data-depth="3"].bf-col {
+			min-height: 48px;
+			padding: 6px 7px;
+		}
+
+		.bf-node[data-depth="2"] .nested,
+		.bf-node[data-depth="3"] .nested {
+			margin-top: 6px;
+		}
+
+		.bf-node[data-depth="3"] .node-label {
+			gap: 4px;
+			min-height: 18px;
+			font-size: 11px;
+		}
+
+		.bf-node[data-depth="3"] .node-kind {
+			padding: 0 4px;
+			font-size: 9px;
+		}
+
+		.bf-node[data-depth="3"] .node-meta {
+			font-size: 10px;
+		}
+
+		.bf-node[data-depth="3"] .empty,
+		.bf-node[data-depth="3"] .empty-action {
+			min-height: 38px;
+			padding: 0 5px;
+			font-size: 11px;
 		}
 
 		.resize-handle {
@@ -977,6 +1041,7 @@ export function getWebviewHtml(webview: vscode.Webview, settings?: BootFrameSett
 			function renderNode(node, depth) {
 				const element = document.createElement('div');
 				element.dataset.id = node.id;
+				element.dataset.depth = String(Math.min(Math.max(0, Math.floor(depth / 2)), 3));
 				element.className = 'bf-node bf-' + node.kind + (node.id === state.selectedId ? ' selected' : '');
 				element.addEventListener('click', function (event) {
 					event.stopPropagation();
@@ -1044,6 +1109,7 @@ export function getWebviewHtml(webview: vscode.Webview, settings?: BootFrameSett
 				title.textContent = getNodeDisplayName(node);
 
 				const details = document.createElement('span');
+				details.className = 'node-meta';
 				details.textContent = meta;
 
 				titleGroup.append(kind, title, details);
