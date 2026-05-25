@@ -257,19 +257,6 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
 			text-transform: uppercase;
 		}
 
-		.node-tools {
-			display: flex;
-			align-items: center;
-			gap: 4px;
-			flex: 0 0 auto;
-		}
-
-		.node-tools button {
-			min-height: 22px;
-			padding: 0 6px;
-			font-size: 11px;
-		}
-
 		.node-label span:last-child {
 			color: var(--bf-muted);
 			font-size: 11px;
@@ -1021,49 +1008,8 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
 				details.textContent = meta;
 
 				titleGroup.append(kind, title, details);
-				label.append(titleGroup, createNodeTools(node));
+				label.appendChild(titleGroup);
 				parent.appendChild(label);
-			}
-
-			function createNodeTools(node) {
-				const tools = document.createElement('div');
-				tools.className = 'node-tools';
-				const entry = findEntry(node.id);
-
-				if (!entry) {
-					return tools;
-				}
-
-				if (node.kind === 'row') {
-					tools.appendChild(createInlineButton('+ Col', 'Add a column to this row', function () {
-						addColumnTo(node);
-					}));
-				}
-
-				if (node.kind === 'container' || node.kind === 'col') {
-					const addRow = createInlineButton('+ Row', 'Add a row inside this item', function () {
-						addRowTo(node);
-					});
-					addRow.disabled = node.kind === 'col' && countColumnDepth(entry) >= 3;
-					tools.appendChild(addRow);
-				}
-
-				if (node.kind === 'col' && entry.parent) {
-					tools.appendChild(createInlineButton('Clone', 'Duplicate this column', function () {
-						duplicateColumn(entry);
-					}));
-				}
-
-				return tools;
-			}
-
-			function createInlineButton(text, title, onClick) {
-				const button = createButton(text, function (event) {
-					event.stopPropagation();
-					onClick();
-				});
-				button.title = title;
-				return button;
 			}
 
 			function appendChildren(parent, node, depth) {

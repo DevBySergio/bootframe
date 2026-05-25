@@ -2,12 +2,17 @@
   "name": "bootframe",
   "displayName": "BootFrame",
   "description": "Visual Bootstrap layout builder for VS Code",
+  "icon": "media/bootframe.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/DevBySergio/bootframe"
+  },
   "version": "0.0.1",
   "engines": {
     "vscode": "^1.120.0"
   },
   "categories": [
-    "Other"
+    "Snippets"
   ],
   "activationEvents": [
     "onView:bootframe.builder",
