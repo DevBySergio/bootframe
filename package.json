@@ -1,0 +1,76 @@
+{
+  "name": "bootframe",
+  "displayName": "BootFrame",
+  "description": "Visual Bootstrap layout builder for VS Code",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.120.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onView:bootframe.builder",
+    "onCommand:bootframe.openBuilder",
+    "onCommand:bootframe.resetBuilder"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "bootframe",
+          "title": "BootFrame",
+          "icon": "media/bootframe.svg"
+        }
+      ]
+    },
+    "views": {
+      "bootframe": [
+        {
+          "id": "bootframe.builder",
+          "name": "Builder",
+          "type": "webview"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "bootframe.openBuilder",
+        "title": "Open BootFrame Builder"
+      },
+      {
+        "command": "bootframe.resetBuilder",
+        "title": "Reset BootFrame Design",
+        "icon": "$(discard)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "bootframe.resetBuilder",
+          "when": "view == bootframe.builder",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.120.0",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "22.x",
+    "typescript-eslint": "^8.56.1",
+    "eslint": "^9.39.3",
+    "typescript": "^5.9.3",
+    "@vscode/test-cli": "^0.0.12",
+    "@vscode/test-electron": "^2.5.2"
+  }
+}
