@@ -71,18 +71,26 @@ function getClasses(node: LayoutNode, options: GenerationOptions): string[] {
 	const base: string[] = [];
 
 	if (node.kind === 'container') {
-		base.push(node.containerType || 'container');
+		base.push(getContainerClass(node, options));
 	} else if (node.kind === 'row') {
 		base.push('row', ...getRowClasses(node, options));
 	} else {
 		base.push(...getColumnClasses(node, options));
 	}
 
-	base.push(...getUtilityClasses(node));
+	base.push(...getUtilityClasses(node, options));
 	return base.filter(Boolean);
 }
 
-function getUtilityClasses(node: LayoutNode): string[] {
+function getContainerClass(node: LayoutNode, options: GenerationOptions): string {
+	if (options.bootstrapVersion === '4' && node.containerType === 'container-xxl') {
+		return 'container-xl';
+	}
+
+	return node.containerType || 'container';
+}
+
+function getUtilityClasses(node: LayoutNode, options: GenerationOptions): string[] {
 	const u = node.settings?.utilities;
 	if (!u) {
 		return [];
@@ -126,9 +134,25 @@ function getUtilityClasses(node: LayoutNode): string[] {
 
 	if (u.textAlign) { result.push(`text-${u.textAlign}`); }
 	if (u.textColor) { result.push(`text-${u.textColor}`); }
-	if (u.fw) { result.push(`fw-${u.fw}`); }
+	result.push(...getFontWeightClasses(u, options));
 
 	return result;
+}
+
+function getFontWeightClasses(u: LayoutUtilities, options: GenerationOptions): string[] {
+	if (!u.fw) {
+		return [];
+	}
+
+	if (options.bootstrapVersion === '5') {
+		return [`fw-${u.fw}`];
+	}
+
+	if (u.fw === 'semibold') {
+		return [];
+	}
+
+	return [`font-weight-${u.fw}`];
 }
 
 function getRowClasses(node: LayoutNode, options: GenerationOptions): string[] {

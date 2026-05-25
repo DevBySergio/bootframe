@@ -52,6 +52,109 @@ suite('BootFrame generator', () => {
 		assert.doesNotMatch(code, /g-sm-4/);
 	});
 
+	test('generates spacing axis and flex sizing utilities', () => {
+		const layout = createNestedLayout();
+		layout.children[0].children[0].settings = {
+			breakpoints: { sm: { span: 3 } },
+			utilities: {
+				flexGrow: 1,
+				flexShrink: 0,
+				mx: 2,
+				my: 3,
+				px: 4,
+				py: 5,
+			},
+		};
+
+		const code = generateBootstrapCode(layout, {
+			bootstrapVersion: '5',
+			outputMode: 'snippet',
+		});
+
+		assert.match(code, /flex-grow-1/);
+		assert.match(code, /flex-shrink-0/);
+		assert.match(code, /mx-2/);
+		assert.match(code, /my-3/);
+		assert.match(code, /px-4/);
+		assert.match(code, /py-5/);
+	});
+
+	test('falls back from container-xxl for Bootstrap 4 output', () => {
+		const layout = createNestedLayout();
+		layout.containerType = 'container-xxl';
+
+		const code = generateBootstrapCode(layout, {
+			bootstrapVersion: '4',
+			outputMode: 'snippet',
+		});
+
+		assert.match(code, /<div class="container-xl">/);
+		assert.doesNotMatch(code, /container-xxl/);
+	});
+
+	test('keeps container-xxl for Bootstrap 5 output', () => {
+		const layout = createNestedLayout();
+		layout.containerType = 'container-xxl';
+
+		const code = generateBootstrapCode(layout, {
+			bootstrapVersion: '5',
+			outputMode: 'snippet',
+		});
+
+		assert.match(code, /<div class="container-xxl">/);
+	});
+
+	test('uses Bootstrap 4 font weight utilities', () => {
+		const weights = ['bold', 'bolder', 'normal', 'light'] as const;
+
+		for (const weight of weights) {
+			const layout = createNestedLayout();
+			layout.children[0].children[0].settings = {
+				breakpoints: { sm: { span: 3 } },
+				utilities: { fw: weight },
+			};
+
+			const code = generateBootstrapCode(layout, {
+				bootstrapVersion: '4',
+				outputMode: 'snippet',
+			});
+
+			assert.match(code, new RegExp(`font-weight-${weight}`));
+			assert.doesNotMatch(code, new RegExp(`fw-${weight}`));
+		}
+	});
+
+	test('omits Bootstrap 5-only semibold font weight in Bootstrap 4 output', () => {
+		const layout = createNestedLayout();
+		layout.children[0].children[0].settings = {
+			breakpoints: { sm: { span: 3 } },
+			utilities: { fw: 'semibold' },
+		};
+
+		const code = generateBootstrapCode(layout, {
+			bootstrapVersion: '4',
+			outputMode: 'snippet',
+		});
+
+		assert.doesNotMatch(code, /fw-semibold/);
+		assert.doesNotMatch(code, /font-weight-semibold/);
+	});
+
+	test('keeps Bootstrap 5 semibold font weight utility', () => {
+		const layout = createNestedLayout();
+		layout.children[0].children[0].settings = {
+			breakpoints: { sm: { span: 3 } },
+			utilities: { fw: 'semibold' },
+		};
+
+		const code = generateBootstrapCode(layout, {
+			bootstrapVersion: '5',
+			outputMode: 'snippet',
+		});
+
+		assert.match(code, /fw-semibold/);
+	});
+
 	test('generates responsive visibility transitions', () => {
 		const layout = createNestedLayout();
 		const column = layout.children[0].children[0];

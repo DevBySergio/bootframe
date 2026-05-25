@@ -48,7 +48,7 @@ class BootFrameViewProvider implements vscode.WebviewViewProvider {
 		};
 
 		const settings = readSettings();
-		webviewView.webview.html = getWebviewHtml(webviewView.webview, this.extensionUri, settings);
+		webviewView.webview.html = getWebviewHtml(webviewView.webview, settings);
 
 		webviewView.webview.onDidReceiveMessage((message: BuilderMessage) => {
 			void this.handleMessage(message);

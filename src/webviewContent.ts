@@ -1,10 +1,9 @@
 import * as vscode from 'vscode';
 import { BootFrameSettings } from './model';
 
-export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri, settings?: BootFrameSettings): string {
+export function getWebviewHtml(webview: vscode.Webview, settings?: BootFrameSettings): string {
 	const nonce = getNonce();
 	const cspSource = webview.cspSource;
-	const codiconsUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media'));
 
 	return `<!doctype html>
 <html lang="en">
@@ -436,7 +435,7 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
 	</style>
 </head>
 <body>
-	<div class="app" data-media="${codiconsUri}">
+	<div class="app">
 		<header class="toolbar">
 			<label>
 				Bootstrap
@@ -456,7 +455,7 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
 			<div class="action-bar">
 				<button id="copyButton" class="primary" title="Copy generated code">Copy</button>
 				<button id="insertButton" title="Insert into the active editor">Insert</button>
-				<button id="createFileButton" title="Create a new HTML document">New HTML</button>
+				<button id="createFileButton" title="Create a complete HTML document, regardless of the output selector">New full HTML</button>
 				<button id="previewButton" title="Toggle live preview">Preview</button>
 				<button id="undoButton" class="icon" title="Undo last layout change">↶</button>
 				<button id="redoButton" class="icon" title="Redo last undone layout change">↷</button>
@@ -512,6 +511,25 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
 				'5': ['xs', 'sm', 'md', 'lg', 'xl', 'xxl'],
 				'4': ['xs', 'sm', 'md', 'lg', 'xl']
 			};
+			const containerTypesByVersion = {
+				'5': ['container', 'container-fluid', 'container-sm', 'container-md', 'container-lg', 'container-xl', 'container-xxl'],
+				'4': ['container', 'container-fluid', 'container-sm', 'container-md', 'container-lg', 'container-xl']
+			};
+			const fontWeightsByVersion = {
+				'5': [
+					{ value: 'bold', text: 'bold' },
+					{ value: 'bolder', text: 'bolder' },
+					{ value: 'semibold', text: 'semibold' },
+					{ value: 'normal', text: 'normal' },
+					{ value: 'light', text: 'light' },
+				],
+				'4': [
+					{ value: 'bold', text: 'bold' },
+					{ value: 'bolder', text: 'bolder' },
+					{ value: 'normal', text: 'normal' },
+					{ value: 'light', text: 'light' },
+				]
+			};
 			const persisted = vscode.getState();
 			const maxHistory = bootframeSettings.maxUndoHistory || 50;
 			let idCounter = persisted && typeof persisted.idCounter === 'number' ? persisted.idCounter : 100;
@@ -550,6 +568,7 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
 					if (!getBreakpoints().includes(state.activeBreakpoint)) {
 						state.activeBreakpoint = 'xl';
 					}
+					normalizeVersionCompatibility(state.root);
 				});
 			});
 
@@ -716,6 +735,7 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
 				if (savedState && savedState.version === 1 && savedState.designerState && savedState.designerState.root) {
 					const designer = savedState.designerState;
 					migrateContainerType(designer.root);
+					normalizeVersionCompatibility(designer.root, designer.version || bootframeSettings.defaultVersion || '5');
 					return designer;
 				}
 
@@ -728,6 +748,25 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
 					delete node.fluid;
 				}
 				node.children.forEach(migrateContainerType);
+			}
+
+			function normalizeVersionCompatibility(node, version) {
+				const targetVersion = version || state.version;
+				if (targetVersion === '4') {
+					if (node.kind === 'container' && node.containerType === 'container-xxl') {
+						node.containerType = 'container-xl';
+					}
+					const utils = node.settings && node.settings.utilities;
+					if (utils && utils.fw === 'semibold') {
+						delete utils.fw;
+						if (Object.keys(utils).length === 0) {
+							delete node.settings.utilities;
+						}
+					}
+				}
+				node.children.forEach(function (child) {
+					normalizeVersionCompatibility(child, targetVersion);
+				});
 			}
 
 			function mutateState(mutator, statusMessage) {
@@ -1100,7 +1139,7 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
 				label.className = 'field';
 				label.textContent = 'Container type';
 				const select = document.createElement('select');
-				const types = ['container', 'container-fluid', 'container-sm', 'container-md', 'container-lg', 'container-xl', 'container-xxl'];
+				const types = containerTypesByVersion[state.version];
 				types.forEach(function (type) {
 					const option = document.createElement('option');
 					option.value = type;
@@ -1120,15 +1159,30 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
 			}
 
 			function renderRowControls(node) {
-				const settings = ensureBreakpointSettings(node, state.activeBreakpoint);
-				const gutter = createNumberField('Gutter', settings.gutter === undefined ? '' : String(settings.gutter), 0, 5, function (value) {
-					mutateState(function () {
-						settings.gutter = value === '' ? undefined : Number(value);
+				const settings = ensureBreakpointSettings(node, state.version === '4' ? 'xs' : state.activeBreakpoint);
+				let gutter;
+				if (state.version === '4') {
+					gutter = createCheckbox('No gutters', settings.gutter === 0, function (checked) {
+						mutateState(function () {
+							if (checked) {
+								settings.gutter = 0;
+							} else {
+								delete settings.gutter;
+							}
+						});
 					});
-				});
+				} else {
+					gutter = createNumberField('Gutter', settings.gutter === undefined ? '' : String(settings.gutter), 0, 5, function (value) {
+						mutateState(function () {
+							settings.gutter = value === '' ? undefined : Number(value);
+						});
+					});
+				}
 				const hint = document.createElement('div');
 				hint.className = 'hint';
-				hint.textContent = 'Rows hold columns. Use + Col or the empty slot in the canvas to build the grid.';
+				hint.textContent = state.version === '4'
+					? 'Bootstrap 4 supports only no-gutters for rows.'
+					: 'Rows hold columns. Use + Col or the empty slot in the canvas to build the grid.';
 				elements.inspector.append(gutter, hint);
 			}
 
@@ -1209,50 +1263,6 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
 					};
 				}
 
-				function addSelect(labelText, key, options) {
-					const label = document.createElement('label');
-					label.className = 'field';
-					label.textContent = labelText;
-					const select = document.createElement('select');
-					const blank = document.createElement('option');
-					blank.value = '';
-					blank.textContent = '—';
-					select.appendChild(blank);
-					options.forEach(function (opt) {
-						const option = document.createElement('option');
-						option.value = String(opt.value);
-						option.textContent = opt.text;
-						select.appendChild(option);
-					});
-					const utils = node.settings && node.settings.utilities || {};
-					select.value = utils[key] !== undefined ? String(utils[key]) : '';
-					select.addEventListener('change', utilsSetter(key));
-					label.appendChild(select);
-					content.appendChild(label);
-				}
-
-				function addNumberSelect(labelText, key, min, max) {
-					const label = document.createElement('label');
-					label.className = 'field';
-					label.textContent = labelText;
-					const select = document.createElement('select');
-					const blank = document.createElement('option');
-					blank.value = '';
-					blank.textContent = '—';
-					select.appendChild(blank);
-					for (let v = min; v <= max; v += 1) {
-						const option = document.createElement('option');
-						option.value = String(v);
-						option.textContent = String(v);
-						select.appendChild(option);
-					}
-					const utils = node.settings && node.settings.utilities || {};
-					select.value = utils[key] !== undefined ? String(utils[key]) : '';
-					select.addEventListener('change', utilsSetter(key));
-					label.appendChild(select);
-					content.appendChild(label);
-				}
-
 				function addSection(title) {
 					const section = document.createElement('div');
 					section.style.cssText = 'border-top: 1px solid var(--bf-border); padding-top: 6px; font-size: 11px; text-transform: uppercase; color: var(--bf-muted);';
@@ -1261,13 +1271,13 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
 				}
 
 				addSection('Display & flex');
-				addSelect('Display', 'display', [
+				content.appendChild(createSimpleSelect('Display', 'display', [
 					{ value: 'flex', text: 'flex' },
 					{ value: 'inline-flex', text: 'inline-flex' },
 					{ value: 'block', text: 'block' },
 					{ value: 'inline-block', text: 'inline-block' },
 					{ value: 'none', text: 'none' },
-				]);
+				], node, utilsSetter));
 				const flexRow = createRow();
 				flexRow.appendChild(createSimpleSelect('Direction', 'flexDirection', [
 					{ value: 'row', text: 'row' },
@@ -1299,24 +1309,28 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
 					{ value: 'stretch', text: 'stretch' },
 				], node, utilsSetter));
 				content.appendChild(flexRow2);
+				const flexRow3 = createRow();
+				flexRow3.appendChild(createNumberedSelect('Grow', 'flexGrow', 0, 1, node, utilsSetter));
+				flexRow3.appendChild(createNumberedSelect('Shrink', 'flexShrink', 0, 1, node, utilsSetter));
+				content.appendChild(flexRow3);
 
 				addSection('Spacing');
 				const marginRow = createRow();
-				['mt', 'mb', 'ms', 'me'].forEach(function (k) {
+				['mt', 'mb', 'ms', 'me', 'mx', 'my'].forEach(function (k) {
 					marginRow.appendChild(createNumberedSelect(k.toUpperCase(), k, 0, 5, node, utilsSetter));
 				});
 				content.appendChild(marginRow);
 				const paddingRow = createRow();
-				['pt', 'pb', 'ps', 'pe'].forEach(function (k) {
+				['pt', 'pb', 'ps', 'pe', 'px', 'py'].forEach(function (k) {
 					paddingRow.appendChild(createNumberedSelect(k.toUpperCase(), k, 0, 5, node, utilsSetter));
 				});
 				content.appendChild(paddingRow);
 
 				addSection('Background & border');
-				addSelect('Background', 'bg', [
+				content.appendChild(createSimpleSelect('Background', 'bg', [
 					'primary', 'secondary', 'success', 'danger', 'warning', 'info',
 					'light', 'dark', 'white', 'transparent', 'body',
-				].map(function (v) { return { value: v, text: v }; }));
+				].map(function (v) { return { value: v, text: v }; }), node, utilsSetter));
 				const borderRow = createRow();
 				borderRow.appendChild(createSimpleSelect('Border', 'border', [
 					{ value: '1', text: 'yes' },
@@ -1354,13 +1368,7 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
 					'primary', 'secondary', 'success', 'danger', 'warning', 'info',
 					'light', 'dark', 'body', 'muted', 'white',
 				].map(function (v) { return { value: v, text: v }; }), node, utilsSetter));
-				textRow.appendChild(createSimpleSelect('Weight', 'fw', [
-					{ value: 'bold', text: 'bold' },
-					{ value: 'bolder', text: 'bolder' },
-					{ value: 'semibold', text: 'semibold' },
-					{ value: 'normal', text: 'normal' },
-					{ value: 'light', text: 'light' },
-				], node, utilsSetter));
+				textRow.appendChild(createSimpleSelect('Weight', 'fw', fontWeightsByVersion[state.version], node, utilsSetter));
 				content.appendChild(textRow);
 
 				elements.inspector.append(toggle, content);
@@ -1389,7 +1397,9 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
 				});
 				const utils = node.settings && node.settings.utilities || {};
 				select.value = utils[key] !== undefined ? String(utils[key]) : '';
-				select.addEventListener('change', setter(key));
+				select.addEventListener('change', function () {
+					setter(key)(select.value);
+				});
 				label.appendChild(select);
 				return label;
 			}
@@ -1411,7 +1421,9 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
 				}
 				const utils = node.settings && node.settings.utilities || {};
 				select.value = utils[key] !== undefined ? String(utils[key]) : '';
-				select.addEventListener('change', setter(key));
+				select.addEventListener('change', function () {
+					setter(key)(select.value === '' ? '' : Number(select.value));
+				});
 				label.appendChild(select);
 				return label;
 			}
