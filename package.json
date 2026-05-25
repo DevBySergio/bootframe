@@ -3,13 +3,15 @@
   "displayName": "BootFrame",
   "description": "Visual Bootstrap layout builder for VS Code",
   "icon": "media/bootframe.png",
+  "publisher": "DevBySergio",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/DevBySergio/bootframe"
   },
-  "version": "0.0.1",
+  "version": "1.2.0",
   "engines": {
-    "vscode": "^1.120.0"
+    "vscode": "^1.80.0"
   },
   "categories": [
     "Snippets"
@@ -64,13 +66,19 @@
       "properties": {
         "bootframe.defaultVersion": {
           "type": "string",
-          "enum": ["5", "4"],
+          "enum": [
+            "5",
+            "4"
+          ],
           "default": "5",
           "description": "Default Bootstrap version for new layouts"
         },
         "bootframe.defaultOutputMode": {
           "type": "string",
-          "enum": ["snippet", "full-html"],
+          "enum": [
+            "snippet",
+            "full-html"
+          ],
           "default": "snippet",
           "description": "Default output mode for generated code"
         },
@@ -105,7 +113,7 @@
     "test": "vscode-test"
   },
   "devDependencies": {
-    "@types/vscode": "^1.120.0",
+    "@types/vscode": "^1.80.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "22.x",
     "typescript-eslint": "^8.56.1",

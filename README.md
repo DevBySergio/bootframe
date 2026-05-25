@@ -83,7 +83,9 @@ Your layout work stays local.
 
 ## 📝 License
 
-License information has not been added yet. Add a `LICENSE` file before publishing this extension.
+MIT License — Copyright (c) 2026 DevBySergio
+
+See the [LICENSE](LICENSE) file for details.
 
 ---
 
