@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
+import { BootFrameSettings } from './model';
 
-export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
+export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri, settings?: BootFrameSettings): string {
 	const nonce = getNonce();
 	const cspSource = webview.cspSource;
 	const codiconsUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media'));
@@ -10,7 +11,7 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${cspSource}; style-src ${cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
+	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${cspSource} https:; style-src ${cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}'; frame-src 'self' blob:;">
 	<title>BootFrame</title>
 	<style>
 		:root {
@@ -342,10 +343,46 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
 			line-height: 1.4;
 		}
 
+		.utilities-toggle {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			width: 100%;
+			padding: 8px 0;
+			border: none;
+			border-top: 1px solid var(--bf-border);
+			border-radius: 0;
+			color: var(--bf-muted);
+			font-size: 11px;
+			text-transform: uppercase;
+			background: transparent;
+			cursor: pointer;
+		}
+
+		.utilities-toggle:hover {
+			color: var(--vscode-foreground);
+		}
+
+		.utilities-content {
+			display: grid;
+			gap: 8px;
+			padding: 4px 0;
+		}
+
+		.utilities-content.hidden {
+			display: none;
+		}
+
 		.pill-row {
 			display: flex;
 			flex-wrap: wrap;
 			gap: 5px;
+		}
+
+		#previewButton.active {
+			color: var(--bf-accent-text);
+			background: var(--bf-accent);
+			border-color: var(--bf-accent);
 		}
 
 		.span-pill {
@@ -361,9 +398,14 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
 		}
 
 		.field-row {
-			display: grid;
-			grid-template-columns: 1fr 1fr;
+			display: flex;
+			flex-wrap: wrap;
 			gap: 8px;
+		}
+
+		.field-row > label {
+			flex: 1 1 80px;
+			min-width: 70px;
 		}
 
 		.checkbox-field {
@@ -428,6 +470,7 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
 				<button id="copyButton" class="primary" title="Copy generated code">Copy</button>
 				<button id="insertButton" title="Insert into the active editor">Insert</button>
 				<button id="createFileButton" title="Create a new HTML document">New HTML</button>
+				<button id="previewButton" title="Toggle live preview">Preview</button>
 				<button id="undoButton" class="icon" title="Undo last layout change">↶</button>
 				<button id="redoButton" class="icon" title="Redo last undone layout change">↷</button>
 			</div>
@@ -454,6 +497,7 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
 						<span>Visual template</span>
 					</div>
 					<div id="canvas" class="canvas" aria-label="BootFrame layout canvas"></div>
+					<iframe id="previewFrame" style="display:none; width:100%; min-height:400px; border:1px solid var(--bf-border); border-radius:6px; background:#fff;" sandbox="allow-scripts allow-same-origin" title="Bootstrap preview"></iframe>
 				</section>
 
 			<section>
@@ -476,16 +520,19 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
 	<script nonce="${nonce}">
 		(function () {
 			const vscode = acquireVsCodeApi();
+			const bootframeSettings = ${JSON.stringify(settings || { defaultVersion: '5', defaultOutputMode: 'snippet', maxUndoHistory: 50 })};
 			const breakpointsByVersion = {
 				'5': ['xs', 'sm', 'md', 'lg', 'xl', 'xxl'],
 				'4': ['xs', 'sm', 'md', 'lg', 'xl']
 			};
 			const persisted = vscode.getState();
-			const maxHistory = 50;
+			const maxHistory = bootframeSettings.maxUndoHistory || 50;
 			let idCounter = persisted && typeof persisted.idCounter === 'number' ? persisted.idCounter : 100;
 			let dragId = null;
 			let resizeState = null;
 			let generateTimer = null;
+			let previewMode = false;
+			let previewUrl = null;
 			let state = restoreDesignerState(persisted);
 			let undoStack = [];
 			let redoStack = [];
@@ -497,12 +544,14 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
 					presetBar: document.getElementById('presetBar'),
 					breadcrumbs: document.getElementById('breadcrumbs'),
 					canvas: document.getElementById('canvas'),
+					previewFrame: document.getElementById('previewFrame'),
 					inspector: document.getElementById('inspector'),
 					codeOutput: document.getElementById('codeOutput'),
 				status: document.getElementById('status'),
 				copyButton: document.getElementById('copyButton'),
 				insertButton: document.getElementById('insertButton'),
 				createFileButton: document.getElementById('createFileButton'),
+				previewButton: document.getElementById('previewButton'),
 				undoButton: document.getElementById('undoButton'),
 				redoButton: document.getElementById('redoButton'),
 				resetButton: document.getElementById('resetButton')
@@ -538,6 +587,9 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
 			elements.resetButton.addEventListener('click', resetState);
 			elements.undoButton.addEventListener('click', undo);
 			elements.redoButton.addEventListener('click', redo);
+			if (elements.previewButton) {
+				elements.previewButton.addEventListener('click', togglePreview);
+			}
 
 			document.addEventListener('keydown', function (event) {
 				const target = event.target;
@@ -598,6 +650,9 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
 
 				if (message.type === 'generated') {
 					elements.codeOutput.value = message.code;
+					if (previewMode) {
+						updatePreview();
+					}
 				}
 
 				if (message.type === 'status') {
@@ -616,8 +671,8 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
 
 			function createDefaultState() {
 				return {
-					version: '5',
-					outputMode: 'snippet',
+					version: bootframeSettings.defaultVersion || '5',
+					outputMode: bootframeSettings.defaultOutputMode || 'snippet',
 					activeBreakpoint: 'sm',
 					selectedId: 'col-main-b',
 					root: {
@@ -672,10 +727,20 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
 
 			function restoreDesignerState(savedState) {
 				if (savedState && savedState.version === 1 && savedState.designerState && savedState.designerState.root) {
-					return savedState.designerState;
+					const designer = savedState.designerState;
+					migrateContainerType(designer.root);
+					return designer;
 				}
 
 				return createDefaultState();
+			}
+
+			function migrateContainerType(node) {
+				if (node.kind === 'container' && node.fluid !== undefined) {
+					node.containerType = node.fluid ? 'container-fluid' : 'container';
+					delete node.fluid;
+				}
+				node.children.forEach(migrateContainerType);
 			}
 
 			function mutateState(mutator, statusMessage) {
@@ -750,6 +815,51 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
 				elements.redoButton.disabled = redoStack.length === 0;
 			}
 
+			function togglePreview() {
+				previewMode = !previewMode;
+				elements.previewButton.textContent = previewMode ? 'Edit' : 'Preview';
+				elements.previewButton.className = previewMode ? 'active' : '';
+				elements.canvas.style.display = previewMode ? 'none' : '';
+				elements.previewFrame.style.display = previewMode ? '' : 'none';
+				if (previewMode) {
+					updatePreview();
+				} else if (previewUrl) {
+					URL.revokeObjectURL(previewUrl);
+					previewUrl = null;
+				}
+			}
+
+			function updatePreview() {
+				const code = elements.codeOutput.value;
+				if (!code) { return; }
+
+				const head = [
+					'<!doctype html>',
+					'<html lang="en">',
+					'<head>',
+					'  <meta charset="utf-8">',
+					'  <meta name="viewport" content="width=device-width, initial-scale=1">',
+					'  <link href="' + (state.version === '4' ? 'https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/css/bootstrap.min.css' : 'https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css') + '" rel="stylesheet">',
+					'  <style>body { padding: 16px; }</style>',
+					'</head>',
+					'<body>',
+				].join('\\n');
+
+				const tail = '\\n</body>\\n</html>';
+
+				const fullHtml = head + (state.outputMode === 'full-html' ? extractBody(code) : code) + tail;
+
+				if (previewUrl) { URL.revokeObjectURL(previewUrl); }
+				const blob = new Blob([fullHtml], { type: 'text/html' });
+				previewUrl = URL.createObjectURL(blob);
+				elements.previewFrame.src = previewUrl;
+			}
+
+			function extractBody(html) {
+				const match = html.match(/<body[^>]*>([\\s\\S]*)<\\/body>/i);
+				return match ? match[1].trim() : html;
+			}
+
 			function saveDesignerState() {
 				vscode.setState({
 					version: 1,
@@ -768,6 +878,9 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
 				renderInspector();
 				updateHistoryButtons();
 				saveDesignerState();
+				if (previewMode && elements.codeOutput.value) {
+					try { updatePreview(); } catch (e) { /* preview is non-critical */ }
+				}
 			}
 
 			function renderBreakpoints() {
@@ -846,7 +959,7 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
 				});
 
 				if (node.kind === 'container') {
-					appendNodeLabel(element, node, node.fluid ? 'container-fluid' : 'container');
+					appendNodeLabel(element, node, node.containerType || 'container');
 					appendChildren(element, node, depth);
 					return element;
 				}
@@ -1028,15 +1141,36 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
 				if (entry.node.kind === 'col') {
 					renderColumnControls(entry.node, entry);
 				}
+
+				try {
+					renderUtilities(entry.node);
+				} catch (e) {
+					// utilities render is non-critical
+				}
 			}
 
 			function renderContainerControls(node) {
-				const checkbox = createCheckbox('Fluid container', Boolean(node.fluid), function (checked) {
+				const label = document.createElement('label');
+				label.className = 'field';
+				label.textContent = 'Container type';
+				const select = document.createElement('select');
+				const types = ['container', 'container-fluid', 'container-sm', 'container-md', 'container-lg', 'container-xl', 'container-xxl'];
+				types.forEach(function (type) {
+					const option = document.createElement('option');
+					option.value = type;
+					option.textContent = type;
+					if ((node.containerType || 'container') === type) {
+						option.selected = true;
+					}
+					select.appendChild(option);
+				});
+				select.addEventListener('change', function () {
 					mutateState(function () {
-						node.fluid = checked;
+						node.containerType = select.value;
 					});
 				});
-				elements.inspector.appendChild(checkbox);
+				label.appendChild(select);
+				elements.inspector.appendChild(label);
 			}
 
 			function renderRowControls(node) {
@@ -1090,6 +1224,250 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
 				depthInfo.textContent = 'Nested column level ' + countColumnDepth(entry) + ' of 3';
 
 				elements.inspector.append(label, spanField, spanPresets, row, hidden, depthInfo);
+			}
+
+			function renderUtilities(node) {
+				const toggle = document.createElement('button');
+				toggle.type = 'button';
+				toggle.className = 'utilities-toggle';
+				let utilitiesVisible = false;
+				toggle.textContent = '⚡ Utilities';
+
+				const content = document.createElement('div');
+				content.className = 'utilities-content hidden';
+
+				toggle.addEventListener('click', function () {
+					utilitiesVisible = !utilitiesVisible;
+					content.className = 'utilities-content' + (utilitiesVisible ? '' : ' hidden');
+				});
+
+				function ensureUtils() {
+					if (!node.settings) { node.settings = {}; }
+					if (!node.settings.utilities) { node.settings.utilities = {}; }
+					return node.settings.utilities;
+				}
+
+				function utilsSetter(key) {
+					return function (value) {
+						mutateState(function () {
+							const utils = ensureUtils();
+							if (value === '' || value === undefined) {
+								delete utils[key];
+							} else {
+								utils[key] = value;
+							}
+							if (Object.keys(utils).length === 0) {
+								delete node.settings.utilities;
+							}
+						});
+					};
+				}
+
+				function addSelect(labelText, key, options) {
+					const label = document.createElement('label');
+					label.className = 'field';
+					label.textContent = labelText;
+					const select = document.createElement('select');
+					const blank = document.createElement('option');
+					blank.value = '';
+					blank.textContent = '—';
+					select.appendChild(blank);
+					options.forEach(function (opt) {
+						const option = document.createElement('option');
+						option.value = String(opt.value);
+						option.textContent = opt.text;
+						select.appendChild(option);
+					});
+					const utils = node.settings && node.settings.utilities || {};
+					select.value = utils[key] !== undefined ? String(utils[key]) : '';
+					select.addEventListener('change', utilsSetter(key));
+					label.appendChild(select);
+					content.appendChild(label);
+				}
+
+				function addNumberSelect(labelText, key, min, max) {
+					const label = document.createElement('label');
+					label.className = 'field';
+					label.textContent = labelText;
+					const select = document.createElement('select');
+					const blank = document.createElement('option');
+					blank.value = '';
+					blank.textContent = '—';
+					select.appendChild(blank);
+					for (let v = min; v <= max; v += 1) {
+						const option = document.createElement('option');
+						option.value = String(v);
+						option.textContent = String(v);
+						select.appendChild(option);
+					}
+					const utils = node.settings && node.settings.utilities || {};
+					select.value = utils[key] !== undefined ? String(utils[key]) : '';
+					select.addEventListener('change', utilsSetter(key));
+					label.appendChild(select);
+					content.appendChild(label);
+				}
+
+				function addSection(title) {
+					const section = document.createElement('div');
+					section.style.cssText = 'border-top: 1px solid var(--bf-border); padding-top: 6px; font-size: 11px; text-transform: uppercase; color: var(--bf-muted);';
+					section.textContent = title;
+					content.appendChild(section);
+				}
+
+				addSection('Display & flex');
+				addSelect('Display', 'display', [
+					{ value: 'flex', text: 'flex' },
+					{ value: 'inline-flex', text: 'inline-flex' },
+					{ value: 'block', text: 'block' },
+					{ value: 'inline-block', text: 'inline-block' },
+					{ value: 'none', text: 'none' },
+				]);
+				const flexRow = createRow();
+				flexRow.appendChild(createSimpleSelect('Direction', 'flexDirection', [
+					{ value: 'row', text: 'row' },
+					{ value: 'column', text: 'column' },
+					{ value: 'row-reverse', text: 'row-reverse' },
+					{ value: 'column-reverse', text: 'column-reverse' },
+				], node, utilsSetter));
+				flexRow.appendChild(createSimpleSelect('Wrap', 'flexWrap', [
+					{ value: 'wrap', text: 'wrap' },
+					{ value: 'nowrap', text: 'nowrap' },
+					{ value: 'wrap-reverse', text: 'wrap-reverse' },
+				], node, utilsSetter));
+				content.appendChild(flexRow);
+
+				const flexRow2 = createRow();
+				flexRow2.appendChild(createSimpleSelect('Justify', 'justifyContent', [
+					{ value: 'start', text: 'start' },
+					{ value: 'end', text: 'end' },
+					{ value: 'center', text: 'center' },
+					{ value: 'between', text: 'between' },
+					{ value: 'around', text: 'around' },
+					{ value: 'evenly', text: 'evenly' },
+				], node, utilsSetter));
+				flexRow2.appendChild(createSimpleSelect('Align', 'alignItems', [
+					{ value: 'start', text: 'start' },
+					{ value: 'end', text: 'end' },
+					{ value: 'center', text: 'center' },
+					{ value: 'baseline', text: 'baseline' },
+					{ value: 'stretch', text: 'stretch' },
+				], node, utilsSetter));
+				content.appendChild(flexRow2);
+
+				addSection('Spacing');
+				const marginRow = createRow();
+				['mt', 'mb', 'ms', 'me'].forEach(function (k) {
+					marginRow.appendChild(createNumberedSelect(k.toUpperCase(), k, 0, 5, node, utilsSetter));
+				});
+				content.appendChild(marginRow);
+				const paddingRow = createRow();
+				['pt', 'pb', 'ps', 'pe'].forEach(function (k) {
+					paddingRow.appendChild(createNumberedSelect(k.toUpperCase(), k, 0, 5, node, utilsSetter));
+				});
+				content.appendChild(paddingRow);
+
+				addSection('Background & border');
+				addSelect('Background', 'bg', [
+					'primary', 'secondary', 'success', 'danger', 'warning', 'info',
+					'light', 'dark', 'white', 'transparent', 'body',
+				].map(function (v) { return { value: v, text: v }; }));
+				const borderRow = createRow();
+				borderRow.appendChild(createSimpleSelect('Border', 'border', [
+					{ value: '1', text: 'yes' },
+					{ value: '0', text: 'none' },
+				], node, utilsSetter));
+				borderRow.appendChild(createSimpleSelect('Color', 'borderColor', [
+					'primary', 'secondary', 'success', 'danger', 'warning', 'info',
+					'light', 'dark', 'white',
+				].map(function (v) { return { value: v, text: v }; }), node, utilsSetter));
+				borderRow.appendChild(createSimpleSelect('Rounded', 'rounded', [
+					{ value: '0', text: 'none' },
+					{ value: 'sm', text: 'sm' },
+					{ value: 'lg', text: 'lg' },
+					{ value: 'pill', text: 'pill' },
+					{ value: 'circle', text: 'circle' },
+				], node, utilsSetter));
+				content.appendChild(borderRow);
+
+				const shadowRow = createRow();
+				shadowRow.appendChild(createSimpleSelect('Shadow', 'shadow', [
+					{ value: 'sm', text: 'sm' },
+					{ value: 'lg', text: 'lg' },
+					{ value: 'none', text: 'none' },
+				], node, utilsSetter));
+				content.appendChild(shadowRow);
+
+				addSection('Text');
+				const textRow = createRow();
+				textRow.appendChild(createSimpleSelect('Align', 'textAlign', [
+					{ value: 'start', text: 'start' },
+					{ value: 'end', text: 'end' },
+					{ value: 'center', text: 'center' },
+				], node, utilsSetter));
+				textRow.appendChild(createSimpleSelect('Color', 'textColor', [
+					'primary', 'secondary', 'success', 'danger', 'warning', 'info',
+					'light', 'dark', 'body', 'muted', 'white',
+				].map(function (v) { return { value: v, text: v }; }), node, utilsSetter));
+				textRow.appendChild(createSimpleSelect('Weight', 'fw', [
+					{ value: 'bold', text: 'bold' },
+					{ value: 'bolder', text: 'bolder' },
+					{ value: 'semibold', text: 'semibold' },
+					{ value: 'normal', text: 'normal' },
+					{ value: 'light', text: 'light' },
+				], node, utilsSetter));
+				content.appendChild(textRow);
+
+				elements.inspector.append(toggle, content);
+			}
+
+			function createRow() {
+				const row = document.createElement('div');
+				row.className = 'field-row';
+				return row;
+			}
+
+			function createSimpleSelect(labelText, key, options, node, setter) {
+				const label = document.createElement('label');
+				label.className = 'field';
+				label.textContent = labelText;
+				const select = document.createElement('select');
+				const blank = document.createElement('option');
+				blank.value = '';
+				blank.textContent = '—';
+				select.appendChild(blank);
+				options.forEach(function (opt) {
+					const option = document.createElement('option');
+					option.value = String(opt.value);
+					option.textContent = opt.text;
+					select.appendChild(option);
+				});
+				const utils = node.settings && node.settings.utilities || {};
+				select.value = utils[key] !== undefined ? String(utils[key]) : '';
+				select.addEventListener('change', setter(key));
+				label.appendChild(select);
+				return label;
+			}
+
+			function createNumberedSelect(labelText, key, min, max, node, setter) {
+				const label = document.createElement('label');
+				label.className = 'field';
+				label.textContent = labelText;
+				const select = document.createElement('select');
+				const blank = document.createElement('option');
+				blank.value = '';
+				blank.textContent = '—';
+				select.appendChild(blank);
+				for (let v = min; v <= max; v += 1) {
+					const option = document.createElement('option');
+					option.value = String(v);
+					option.textContent = String(v);
+					select.appendChild(option);
+				}
+				const utils = node.settings && node.settings.utilities || {};
+				select.value = utils[key] !== undefined ? String(utils[key]) : '';
+				select.addEventListener('change', setter(key));
+				label.appendChild(select);
+				return label;
 			}
 
 			function createSpanPresets(node, settings, currentSpan) {
@@ -1155,7 +1533,7 @@ export function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri
 
 			function getNodeDisplayName(node) {
 				if (node.kind === 'container') {
-					return node.fluid ? 'Fluid container' : 'Container';
+					return node.containerType || 'Container';
 				}
 
 				if (node.kind === 'row') {

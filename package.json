@@ -53,6 +53,42 @@
           "group": "navigation"
         }
       ]
+    },
+    "configuration": {
+      "title": "BootFrame",
+      "properties": {
+        "bootframe.defaultVersion": {
+          "type": "string",
+          "enum": ["5", "4"],
+          "default": "5",
+          "description": "Default Bootstrap version for new layouts"
+        },
+        "bootframe.defaultOutputMode": {
+          "type": "string",
+          "enum": ["snippet", "full-html"],
+          "default": "snippet",
+          "description": "Default output mode for generated code"
+        },
+        "bootframe.indentSize": {
+          "type": "number",
+          "default": 2,
+          "minimum": 0,
+          "maximum": 8,
+          "description": "Number of spaces for indentation in generated HTML"
+        },
+        "bootframe.maxUndoHistory": {
+          "type": "number",
+          "default": 50,
+          "minimum": 1,
+          "maximum": 200,
+          "description": "Maximum number of undo steps"
+        },
+        "bootframe.includeBootstrapJS": {
+          "type": "boolean",
+          "default": false,
+          "description": "Include Bootstrap JS bundle when generating complete HTML documents"
+        }
+      }
     }
   },
   "scripts": {

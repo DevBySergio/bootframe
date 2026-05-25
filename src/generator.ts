@@ -4,6 +4,7 @@ import {
 	breakpointsByVersion,
 	GenerationOptions,
 	LayoutNode,
+	LayoutUtilities,
 } from './model';
 
 const bootstrapCssByVersion = {
@@ -17,13 +18,14 @@ const bootstrapJsByVersion = {
 };
 
 export function generateBootstrapCode(layout: LayoutNode, options: GenerationOptions): string {
-	const snippet = renderNode(layout, options, 0).join('\n');
+	const indentSize = options.indentSize ?? 2;
+	const snippet = renderNode(layout, options, 0, indentSize).join('\n');
 
 	if (options.outputMode === 'snippet') {
 		return snippet;
 	}
 
-	return [
+	const result = [
 		'<!doctype html>',
 		'<html lang="en">',
 		'<head>',
@@ -33,15 +35,20 @@ export function generateBootstrapCode(layout: LayoutNode, options: GenerationOpt
 		`  <link href="${bootstrapCssByVersion[options.bootstrapVersion]}" rel="stylesheet">`,
 		'</head>',
 		'<body>',
-		indentBlock(snippet, 1),
-		`  <script src="${bootstrapJsByVersion[options.bootstrapVersion]}"></script>`,
+		indentBlock(snippet, 1, indentSize),
 		'</body>',
 		'</html>',
-	].join('\n');
+	];
+
+	if (options.includeBootstrapJS) {
+		result.splice(result.length - 1, 0, `  <script src="${bootstrapJsByVersion[options.bootstrapVersion]}"></script>`);
+	}
+
+	return result.join('\n');
 }
 
-function renderNode(node: LayoutNode, options: GenerationOptions, level: number): string[] {
-	const pad = indent(level);
+function renderNode(node: LayoutNode, options: GenerationOptions, level: number, indentSize: number): string[] {
+	const pad = indent(level, indentSize);
 	const classes = getClasses(node, options);
 	const openTag = `${pad}<div class="${classes.join(' ')}">`;
 
@@ -55,21 +62,73 @@ function renderNode(node: LayoutNode, options: GenerationOptions, level: number)
 
 	return [
 		openTag,
-		...node.children.flatMap((child) => renderNode(child, options, level + 1)),
+		...node.children.flatMap((child) => renderNode(child, options, level + 1, indentSize)),
 		`${pad}</div>`,
 	];
 }
 
 function getClasses(node: LayoutNode, options: GenerationOptions): string[] {
+	const base: string[] = [];
+
 	if (node.kind === 'container') {
-		return [node.fluid ? 'container-fluid' : 'container'];
+		base.push(node.containerType || 'container');
+	} else if (node.kind === 'row') {
+		base.push('row', ...getRowClasses(node, options));
+	} else {
+		base.push(...getColumnClasses(node, options));
 	}
 
-	if (node.kind === 'row') {
-		return ['row', ...getRowClasses(node, options)].filter(Boolean);
+	base.push(...getUtilityClasses(node));
+	return base.filter(Boolean);
+}
+
+function getUtilityClasses(node: LayoutNode): string[] {
+	const u = node.settings?.utilities;
+	if (!u) {
+		return [];
 	}
 
-	return getColumnClasses(node, options);
+	const result: string[] = [];
+
+	if (u.display) { result.push(`d-${u.display}`); }
+	if (u.flexDirection) { result.push(`flex-${u.flexDirection}`); }
+	if (u.justifyContent) { result.push(`justify-content-${u.justifyContent}`); }
+	if (u.alignItems) { result.push(`align-items-${u.alignItems}`); }
+	if (u.flexWrap) { result.push(`flex-${u.flexWrap}`); }
+	if (u.flexGrow !== undefined) { result.push(`flex-grow-${u.flexGrow}`); }
+	if (u.flexShrink !== undefined) { result.push(`flex-shrink-${u.flexShrink}`); }
+
+	if (u.mt !== undefined) { result.push(`mt-${u.mt}`); }
+	if (u.mb !== undefined) { result.push(`mb-${u.mb}`); }
+	if (u.ms !== undefined) { result.push(`ms-${u.ms}`); }
+	if (u.me !== undefined) { result.push(`me-${u.me}`); }
+	if (u.mx !== undefined) { result.push(`mx-${u.mx}`); }
+	if (u.my !== undefined) { result.push(`my-${u.my}`); }
+	if (u.pt !== undefined) { result.push(`pt-${u.pt}`); }
+	if (u.pb !== undefined) { result.push(`pb-${u.pb}`); }
+	if (u.ps !== undefined) { result.push(`ps-${u.ps}`); }
+	if (u.pe !== undefined) { result.push(`pe-${u.pe}`); }
+	if (u.px !== undefined) { result.push(`px-${u.px}`); }
+	if (u.py !== undefined) { result.push(`py-${u.py}`); }
+
+	if (u.bg) { result.push(`bg-${u.bg}`); }
+
+	if (u.border !== undefined) {
+		result.push(u.border === 0 ? 'border-0' : 'border');
+	}
+	if (u.borderColor) { result.push(`border-${u.borderColor}`); }
+	if (u.rounded !== undefined) {
+		result.push(u.rounded === 0 ? 'rounded-0' : `rounded-${u.rounded}`);
+	}
+
+	if (u.shadow === 'none') { result.push('shadow-none'); }
+	else if (u.shadow) { result.push(`shadow-${u.shadow}`); }
+
+	if (u.textAlign) { result.push(`text-${u.textAlign}`); }
+	if (u.textColor) { result.push(`text-${u.textColor}`); }
+	if (u.fw) { result.push(`fw-${u.fw}`); }
+
+	return result;
 }
 
 function getRowClasses(node: LayoutNode, options: GenerationOptions): string[] {
@@ -160,12 +219,12 @@ function getVisibilityClasses(
 	return classes;
 }
 
-function indent(level: number): string {
-	return '  '.repeat(level);
+function indent(level: number, size: number): string {
+	return ' '.repeat(size * level);
 }
 
-function indentBlock(source: string, level: number): string {
-	const prefix = indent(level);
+function indentBlock(source: string, level: number, indentSize: number): string {
+	const prefix = indent(level, indentSize);
 
 	return source
 		.split('\n')

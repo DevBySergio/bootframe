@@ -1,12 +1,21 @@
 import * as vscode from 'vscode';
 import { generateBootstrapCode } from './generator';
-import { GenerationOptions, LayoutNode } from './model';
+import { BootFrameSettings, GenerationOptions, LayoutNode } from './model';
 import { getWebviewHtml } from './webviewContent';
 
 interface BuilderMessage {
 	type: 'generate' | 'copy' | 'insert' | 'createFile';
 	layout?: LayoutNode;
 	options?: GenerationOptions;
+}
+
+function readSettings(): BootFrameSettings {
+	const config = vscode.workspace.getConfiguration('bootframe');
+	return {
+		defaultVersion: config.get('defaultVersion', '5'),
+		defaultOutputMode: config.get('defaultOutputMode', 'snippet'),
+		maxUndoHistory: config.get('maxUndoHistory', 50),
+	};
 }
 
 export function activate(context: vscode.ExtensionContext) {
@@ -38,7 +47,8 @@ class BootFrameViewProvider implements vscode.WebviewViewProvider {
 			localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, 'media')],
 		};
 
-		webviewView.webview.html = getWebviewHtml(webviewView.webview, this.extensionUri);
+		const settings = readSettings();
+		webviewView.webview.html = getWebviewHtml(webviewView.webview, this.extensionUri, settings);
 
 		webviewView.webview.onDidReceiveMessage((message: BuilderMessage) => {
 			void this.handleMessage(message);
@@ -55,9 +65,13 @@ class BootFrameViewProvider implements vscode.WebviewViewProvider {
 		}
 
 		try {
-			const options: GenerationOptions = message.type === 'createFile'
+			const config = vscode.workspace.getConfiguration('bootframe');
+			const merged: GenerationOptions = message.type === 'createFile'
 				? { ...message.options, outputMode: 'full-html' }
-				: message.options;
+				: { ...message.options };
+			merged.indentSize = config.get('indentSize', 2);
+			merged.includeBootstrapJS = config.get('includeBootstrapJS', false);
+			const options = merged;
 			const code = generateBootstrapCode(message.layout, options);
 
 			if (message.type === 'generate') {
